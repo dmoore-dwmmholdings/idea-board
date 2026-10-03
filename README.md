@@ -21,11 +21,19 @@ The full spec is in [SPEC.md](SPEC.md).
 
 ## Run it on a Windows server
 
-On the Windows server, open PowerShell as Administrator and run:
+On the Windows server, open Git Bash or WSL as Administrator and run:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dmoore-dwmmholdings/idea-board/main/install.sh | bash
+```
+
+Or open PowerShell as Administrator and run:
 
 ```powershell
 [Net.ServicePointManager]::SecurityProtocol = 'Tls12'; irm https://raw.githubusercontent.com/dmoore-dwmmholdings/idea-board/main/install.ps1 | iex
 ```
+
+`install.sh` only hands off to `install.ps1`, which does the work.
 
 The installer:
 
@@ -41,7 +49,7 @@ It then prints the URLs to open from your machine. It is safe to re-run, so re-r
 | `C:\ProgramData\IdeaBoard\data\ideas.json` | Your ideas |
 | `C:\ProgramData\IdeaBoard\logs\service.log` | Service output (rotates at 1 MB) |
 
-Settings (set them before you run the one-liner): `$env:BOARD_PORT = 5000`, `$env:BOARD_ALLOW_FROM = '10.0.0.0/8'` (or `Any`), and `$env:BOARD_UNINSTALL = 1` to remove it (your data is kept).
+Settings (set them before you run the one-liner; in bash, use `curl ... | BOARD_PORT=5000 bash`): `$env:BOARD_PORT = 5000`, `$env:BOARD_ALLOW_FROM = '10.0.0.0/8'` (or `Any`), and `$env:BOARD_UNINSTALL = 1` to remove it (your data is kept).
 
 > The board has no login. Anyone who can reach the port can read and edit your ideas. Keep the firewall rule tight.
 
