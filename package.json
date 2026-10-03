@@ -1,0 +1,15 @@
+{
+  "name": "idea-board",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A private, locally hosted board for product ideas.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "installer": "node scripts/build-installer.js",
+    "installer:serve": "node scripts/build-installer.js --serve"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
