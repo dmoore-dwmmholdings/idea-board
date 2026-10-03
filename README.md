@@ -30,10 +30,10 @@ curl -fsSL https://raw.githubusercontent.com/dmoore-dwmmholdings/idea-board/main
 Or open PowerShell as Administrator and run:
 
 ```powershell
-[Net.ServicePointManager]::SecurityProtocol = 'Tls12'; irm https://raw.githubusercontent.com/dmoore-dwmmholdings/idea-board/main/install.ps1 | iex
+[Net.ServicePointManager]::SecurityProtocol = 'Tls12'; iwr https://raw.githubusercontent.com/dmoore-dwmmholdings/idea-board/main/install.ps1 -OutFile $env:TEMP\idea-board-install.ps1 -UseBasicParsing; powershell -NoProfile -ExecutionPolicy RemoteSigned -File $env:TEMP\idea-board-install.ps1
 ```
 
-`install.sh` only hands off to `install.ps1`, which does the work.
+`install.sh` downloads `install.ps1`, which does the work, and runs it as a file. Avoid `irm ... | iex`: Windows Defender can block it as a download cradle, which Git Bash reports as `powershell.exe: Permission denied`.
 
 The installer:
 

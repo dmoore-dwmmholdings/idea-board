@@ -9,12 +9,13 @@
 set -euo pipefail
 
 PS1_URL=https://raw.githubusercontent.com/dmoore-dwmmholdings/idea-board/main/install.ps1
-PS_ONE_LINER="[Net.ServicePointManager]::SecurityProtocol = 'Tls12'; irm $PS1_URL | iex"
+PS_ONE_LINER="[Net.ServicePointManager]::SecurityProtocol = 'Tls12'; iwr $PS1_URL -OutFile \$env:TEMP\\idea-board-install.ps1 -UseBasicParsing; powershell -NoProfile -ExecutionPolicy RemoteSigned -File \$env:TEMP\\idea-board-install.ps1"
 
 # Stop Git Bash / MSYS2 rewriting arguments such as `/c` into Windows paths.
 export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'
 
 # PowerShell takes -EncodedCommand as base64 UTF-16LE, which survives cmd.exe and WSL without quoting trouble.
+# Used only for the small probes below, never to download and run code.
 encode() { printf '%s' "$1" | iconv -f UTF-8 -t UTF-16LE | base64 | tr -d '\r\n'; }
 
 # Ways to start Windows PowerShell, most direct first. cmd.exe lets Windows resolve the path itself.
@@ -24,6 +25,8 @@ runners() {
   echo cmd.exe
   echo pwsh.exe
 }
+
+to_unix() { if command -v cygpath >/dev/null 2>&1; then cygpath -u "$1"; else wslpath -u "$1"; fi; }
 
 run_ps() {
   local runner=$1
@@ -76,21 +79,22 @@ main() {
     exit 1
   fi
 
-  # Inline the settings so they reach PowerShell from WSL too, where env vars do not cross over by default.
-  local cmd="[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 'Tls12'; "
-  local name value q="'"
-  for name in BOARD_PORT BOARD_ALLOW_FROM BOARD_UNINSTALL NSSM_URL; do
-    value="${!name:-}"
-    if [ -n "$value" ]; then
-      value=${value//$q/$q$q}
-      cmd+="\$env:$name = '$value'; "
-    fi
-  done
-  cmd+="irm '$PS1_URL' | iex"
+  # Download with curl and run it as a file. Defender blocks `powershell -EncodedCommand "irm ... | iex"`
+  # (a download cradle) at process start, which shows up here as "Permission denied".
+  local win_tmp script_win script_unix status=0
+  win_tmp=$(run_ps "$found" -NoProfile -NonInteractive -EncodedCommand "$(encode '[IO.Path]::GetTempPath()')" </dev/null | tr -d '\r')
+  script_win="${win_tmp%\\}\\idea-board-install.ps1"
+  script_unix=$(to_unix "$script_win")
+  curl -fsSL "$PS1_URL" -o "$script_unix"
 
-  echo "==> Starting the installer with $found"
-  # </dev/null keeps PowerShell from reading the rest of the piped script.
-  run_ps "$found" -NoProfile -ExecutionPolicy Bypass -EncodedCommand "$(encode "$cmd")" </dev/null
+  # Git Bash passes env vars to Windows programs as is; WSL only passes the ones named in WSLENV.
+  export WSLENV="${WSLENV:+$WSLENV:}BOARD_PORT:BOARD_ALLOW_FROM:BOARD_UNINSTALL:NSSM_URL"
+
+  echo "==> Running $script_win with $found"
+  # RemoteSigned is enough: curl does not mark the file as downloaded. </dev/null keeps PowerShell off the piped script.
+  run_ps "$found" -NoProfile -ExecutionPolicy RemoteSigned -File "$script_win" </dev/null || status=$?
+  rm -f "$script_unix"
+  exit "$status"
 }
 
 main "$@"
