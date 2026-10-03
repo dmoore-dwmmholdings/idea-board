@@ -24,6 +24,8 @@ $StateDir  = Join-Path $env:ProgramData 'IdeaBoard'
 $DataDir   = Join-Path $StateDir 'data'
 $LogDir    = Join-Path $StateDir 'logs'
 $LogFile   = Join-Path $LogDir 'service.log'
+# Not $env:TEMP: a caller such as Git Bash can hand PowerShell a TEMP that does not exist.
+$WorkDir   = Join-Path $StateDir 'tmp'
 $NssmUrl   = if ($env:NSSM_URL) { $env:NSSM_URL } else { 'https://nssm.cc/release/nssm-2.24.zip' }
 
 function Step($msg) { Write-Host "==> $msg" -ForegroundColor Cyan }
@@ -76,13 +78,15 @@ if ($env:BOARD_UNINSTALL) {
 
 # ---------- node ----------
 
+New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
+
 $node = Get-NodeExe
 if (-not $node) {
   Step 'Installing Node.js LTS'
   $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'x64' }
   # Parentheses make PowerShell 5.1 enumerate the JSON array instead of passing it as one object.
   $release = (Invoke-RestMethod 'https://nodejs.org/dist/index.json' -UseBasicParsing) | Where-Object { $_.lts } | Select-Object -First 1
-  $msi = Join-Path $env:TEMP "node-$($release.version)-$arch.msi"
+  $msi = Join-Path $WorkDir "node-$($release.version)-$arch.msi"
   Get-WithRetry "https://nodejs.org/dist/$($release.version)/node-$($release.version)-$arch.msi" $msi
   $proc = Start-Process msiexec.exe -ArgumentList '/i', "`"$msi`"", '/qn', '/norestart' -Wait -PassThru
   Remove-Item $msi -Force -ErrorAction SilentlyContinue
@@ -97,8 +101,8 @@ Step "Using Node $(& $node -v) at $node"
 New-Item -ItemType Directory -Force -Path $Root, $AppDir, $DataDir, $LogDir | Out-Null
 if (-not (Test-Path $Nssm)) {
   Step 'Downloading NSSM'
-  $zip = Join-Path $env:TEMP 'nssm.zip'
-  $tmp = Join-Path $env:TEMP 'nssm-extract'
+  $zip = Join-Path $WorkDir 'nssm.zip'
+  $tmp = Join-Path $WorkDir 'nssm-extract'
   Get-WithRetry $NssmUrl $zip
   Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
   Expand-Archive $zip -DestinationPath $tmp -Force

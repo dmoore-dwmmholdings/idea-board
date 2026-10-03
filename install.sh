@@ -13,6 +13,11 @@ PS_ONE_LINER="[Net.ServicePointManager]::SecurityProtocol = 'Tls12'; iwr $PS1_UR
 
 # Stop Git Bash / MSYS2 rewriting arguments such as `/c` into Windows paths.
 export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'
+# That can also stop TEMP/TMP being converted, leaving Windows programs with TEMP=/tmp. Hand them real paths.
+if command -v cygpath >/dev/null 2>&1; then
+  TEMP=$(cygpath -w "${TMPDIR:-/tmp}")
+  export TEMP TMP=$TEMP
+fi
 
 # PowerShell takes -EncodedCommand as base64 UTF-16LE, which survives cmd.exe and WSL without quoting trouble.
 # Used only for the small probes below, never to download and run code.
@@ -26,7 +31,7 @@ runners() {
   echo pwsh.exe
 }
 
-to_unix() { if command -v cygpath >/dev/null 2>&1; then cygpath -u "$1"; else wslpath -u "$1"; fi; }
+to_win() { if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else wslpath -w "$1"; fi; }
 
 run_ps() {
   local runner=$1
@@ -81,19 +86,22 @@ main() {
 
   # Download with curl and run it as a file. Defender blocks `powershell -EncodedCommand "irm ... | iex"`
   # (a download cradle) at process start, which shows up here as "Permission denied".
-  local win_tmp script_win script_unix status=0
-  win_tmp=$(run_ps "$found" -NoProfile -NonInteractive -EncodedCommand "$(encode '[IO.Path]::GetTempPath()')" </dev/null | tr -d '\r')
-  script_win="${win_tmp%\\}\\idea-board-install.ps1"
-  script_unix=$(to_unix "$script_win")
-  curl -fsSL "$PS1_URL" -o "$script_unix"
+  local tmp_dir script_win status=0
+  tmp_dir=$(mktemp -d)
+  if ! curl -fsSL "$PS1_URL" -o "$tmp_dir/install.ps1"; then
+    echo "Could not download $PS1_URL to $tmp_dir/install.ps1" >&2
+    exit 1
+  fi
+  script_win=$(to_win "$tmp_dir/install.ps1")
 
   # Git Bash passes env vars to Windows programs as is; WSL only passes the ones named in WSLENV.
   export WSLENV="${WSLENV:+$WSLENV:}BOARD_PORT:BOARD_ALLOW_FROM:BOARD_UNINSTALL:NSSM_URL"
 
   echo "==> Running $script_win with $found"
-  # RemoteSigned is enough: curl does not mark the file as downloaded. </dev/null keeps PowerShell off the piped script.
-  run_ps "$found" -NoProfile -ExecutionPolicy RemoteSigned -File "$script_win" </dev/null || status=$?
-  rm -f "$script_unix"
+  # Bypass, not RemoteSigned: under WSL the file is on a \\wsl.localhost share, which PowerShell treats as remote.
+  # </dev/null keeps PowerShell from reading the rest of the piped script.
+  run_ps "$found" -NoProfile -ExecutionPolicy Bypass -File "$script_win" </dev/null || status=$?
+  rm -rf "$tmp_dir"
   exit "$status"
 }
 
